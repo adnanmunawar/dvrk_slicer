@@ -109,8 +109,6 @@ class DvrkFootPedals:
         return rising_edge
 
 
-
-
 class DvrkSlicer:
 
     def __init__(self):
@@ -140,7 +138,6 @@ class DvrkSlicer:
         self._igtl_probe_trans = igtltransform
         self._igtl_fiducial_point = igtlpoint
         self._igtl_text = igtlstring
-
 
         self._igtl_cam_trans_pub = rospy.Publisher('/IGTL_TRANS_OUT', igtltransform, queue_size=1)
         self._igtl_probe_trans_pub = rospy.Publisher('/IGTL_TRANS_OUT', igtltransform, queue_size=1)
