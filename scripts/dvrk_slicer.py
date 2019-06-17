@@ -128,8 +128,8 @@ class DvrkSlicer:
         self._mtml.set_wrench_body_force((0, 0, 0))
         self._mtmr.set_wrench_body_force((0, 0, 0))
 
-        self._mtmr_pos_pre = Vector(0,0,0)
-        self._mtml_pos_pre = Vector(0,0,0)
+        self._mtmr_pos_pre = None
+        self._mtml_pos_pre = None
 
         self._cam_transform = Frame()
         self._probe_transfrom = Frame()
@@ -141,10 +141,11 @@ class DvrkSlicer:
         self._igtl_probe_trans.name = 'ProbeTransform'
         self._igtl_probe_trans.transform.rotation.w = 1.0
         self._igtl_fiducial_point = igtlpoint()
+        self._igtl_fiducial_point.name = 'ENTRY'
         self._igtl_text = igtlstring()
 
-        self._igtl_cam_trans_pub = rospy.Publisher('/IGTL_TRANS_OUT', igtltransform, queue_size=1)
-        self._igtl_probe_trans_pub = rospy.Publisher('/IGTL_TRANS_OUT', igtltransform, queue_size=1)
+        self._igtl_cam_trans_pub = rospy.Publisher('/IGTL_TRANSFORM_OUT', igtltransform, queue_size=1)
+        self._igtl_probe_trans_pub = rospy.Publisher('/IGTL_TRANSFORM_OUT', igtltransform, queue_size=1)
         self._igtl_fiducial_pub = rospy.Publisher('/IGTL_POINT_OUT', igtlpoint, queue_size=1)
         self._igtl_status_pub = rospy.Publisher('/IGTL_TEXT_OUT', igtlstring, queue_size=1)
 
@@ -154,13 +155,15 @@ class DvrkSlicer:
         self._pub_msg_pairs[self._igtl_cam_trans_pub] = self._igtl_cam_trans
         # self._pub_msg_pairs[self._igtl_probe_trans_pub] = self._igtl_probe_trans
         self._pub_msg_pairs[self._igtl_fiducial_pub] = self._igtl_fiducial_point
-        self._pub_msg_pairs[self._igtl_status_pub] = self._igtl_text
+        # self._pub_msg_pairs[self._igtl_status_pub] = self._igtl_text
 
         self._fiducial_placement_modes = ['ENTRY', 'TARGET']
         self._fiducial_placement_active_mode = 0
 
     def get_mtml_vel(self, dt):
         cp = self._mtml.get_current_position().p
+        if self._mtml_pos_pre is None:
+            self._mtml_pos_pre = cp
         vel = (cp - self._mtml_pos_pre) / dt
         self._mtml_pos_pre.x(cp[0])
         self._mtml_pos_pre.y(cp[1])
@@ -169,6 +172,11 @@ class DvrkSlicer:
 
     def get_mtmr_vel(self, dt):
         cp = self._mtmr.get_current_position().p
+        if self._mtmr_pos_pre is None:
+            self._mtmr_pos_pre = cp
+        print cp
+        print self._mtmr_pos_pre
+        print '--'
         vel = (cp - self._mtmr_pos_pre) / dt
         self._mtmr_pos_pre.x(cp[0])
         self._mtmr_pos_pre.y(cp[1])
@@ -193,9 +201,10 @@ class DvrkSlicer:
     def update_cam_transform(self):
         if self._footpedals.cam_btn_pressed:
             mtml_rot = self._mtml.get_current_position().M
-            delta_trans = Frame(mtml_rot, self.get_mtml_vel(0.001))
+            # self._cam_transform.M = self._cam_transform
+            # delta_trans = Frame(mtml_rot, self.get_mtml_vel(0.001))
 
-            self._cam_transform = self._cam_transform * delta_trans
+            self._cam_transform.p = self._cam_transform.p + self.get_mtml_vel(0.001)
             self.to_igtl_transfrom(self._cam_transform, self._igtl_cam_trans)
 
     def update_probe_transform(self):
@@ -221,6 +230,7 @@ class DvrkSlicer:
         while not rospy.is_shutdown():
             self.update_cam_transform()
             self.update_probe_transform()
+            self.update_fiducial_position()
             self.execute_pubs()
             pass
 
