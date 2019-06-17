@@ -44,66 +44,69 @@
 # //==============================================================================
 import slicer
 
-layoutNameRight = "RightView"
-layoutLabel = "T3"
-
+# Create a Widget for Right Window
+#
+#
+layout_name_right = "Right_Window"
+layout_label = "T3"
 # Create MRML node
-viewNodeRight = slicer.vtkMRMLViewNode()
-viewNodeRight.SetName(layoutNameRight)
-viewNodeRight.SetLayoutName(layoutNameRight)
-viewNodeRight.SetLayoutLabel(layoutLabel)
-viewNodeRight = slicer.mrmlScene.AddNode(viewNodeRight)
-viewNodeRight.SetName('RightView')
+view_node_right = slicer.vtkMRMLViewNode()
+view_node_right.SetName(layout_name_right)
+view_node_right.SetLayoutName(layout_name_right)
+view_node_right.SetLayoutLabel(layout_label)
+view_node_right = slicer.mrmlScene.AddNode(view_node_right)
+view_node_right.SetName(layout_name_right)
 
 # Create widget
-viewWidgetRight = slicer.qMRMLThreeDWidget()
+view_widget_right = slicer.qMRMLThreeDWidget()
+view_widget_right.setMRMLScene(slicer.mrmlScene)
+view_widget_right.setMRMLViewNode(view_node_right)
+view_widget_right.setWindowTitle(layout_name_right) # Make sure to name the window
+view_widget_right.show()
 
-viewWidgetRight.setMRMLScene(slicer.mrmlScene)
-viewWidgetRight.setMRMLViewNode(viewNodeRight)
-viewWidgetRight.show()
 
-layoutNameLeft = "LeftView"
-
+# Create a Widget for Right Window
+#
+#
+layoutNameLeft = "Left_Window"
 # Create MRML node
-viewNodeLeft = slicer.vtkMRMLViewNode()
-viewNodeLeft.SetName(layoutNameLeft)
-viewNodeLeft.SetLayoutName(layoutNameLeft)
-viewNodeLeft.SetLayoutLabel(layoutLabel)
-viewNodeLeft = slicer.mrmlScene.AddNode(viewNodeLeft)
-viewNodeLeft.SetName('LeftView')
+view_node_left = slicer.vtkMRMLViewNode()
+view_node_left.SetName(layoutNameLeft)
+view_node_left.SetLayoutName(layoutNameLeft)
+view_node_left.SetLayoutLabel(layout_label)
+view_node_left = slicer.mrmlScene.AddNode(view_node_left)
+view_node_left.SetName(layoutNameLeft)
 
 # Create widget
-viewWidgetLeft = slicer.qMRMLThreeDWidget()
+view_widget_left = slicer.qMRMLThreeDWidget()
+view_widget_left.setMRMLScene(slicer.mrmlScene)
+view_widget_left.setMRMLViewNode(view_node_left)
+view_widget_left.setWindowTitle(layoutNameLeft) # Make sure to name the window
+view_widget_left.show()
 
-viewWidgetLeft.setMRMLScene(slicer.mrmlScene)
-viewWidgetLeft.setMRMLViewNode(viewNodeLeft)
-viewWidgetLeft.show()
+# Create a Transform for the Camera
+camera_transform = slicer.mrmlScene.CreateNodeByClass('vtkMRMLLinearTransformNode')
+camera_transform.SetName('CameraTransform')
+slicer.mrmlScene.AddNode(camera_transform)
 
-
-camera_right = slicer.modules.cameras.logic().GetViewActiveCameraNode(viewNodeRight)
+# Get Right camera handle
+camera_right = slicer.modules.cameras.logic().GetViewActiveCameraNode(view_node_right)
 camera_right.GetCamera().Azimuth(-5)
-camera_left = slicer.modules.cameras.logic().GetViewActiveCameraNode(viewNodeLeft)
-camera_left.GetCamera().Azimuth(5)
-
 camera_right.SetName('CameraRight')
+camera_right.SetAndObserveTransformNodeID(camera_transform.GetID()) # Assign Transform for the Camera
+
+# Get Left camera handle
+camera_left = slicer.modules.cameras.logic().GetViewActiveCameraNode(view_node_left)
+camera_left.GetCamera().Azimuth(5)
 camera_left.SetName('CameraLeft')
-
-cameraTransform = slicer.mrmlScene.CreateNodeByClass('vtkMRMLLinearTransformNode')
-
-cameraTransform.SetName('CameraTransform')
-
-slicer.mrmlScene.AddNode(cameraTransform)
-
-camera_right.SetAndObserveTransformNodeID(cameraTransform.GetID())
-camera_left.SetAndObserveTransformNodeID(cameraTransform.GetID())
+camera_left.SetAndObserveTransformNodeID(camera_transform.GetID()) # Assign Transform for the Camera
 
 print 'Creating OpenIGTLinkIF connector'
 
-igtlConnector = slicer.vtkMRMLIGTLConnectorNode()
-slicer.mrmlScene.AddNode(igtlConnector)
+igtl_connector = slicer.vtkMRMLIGTLConnectorNode()
+slicer.mrmlScene.AddNode(igtl_connector)
 
-igtlConnector.SetName('DVRK_IGTL_CONNECTOR')
-igtlConnector.SetTypeClient('localhost', 11344)
-
-igtlConnector.Start()
-igtlConnector.RegisterOutgoingMRMLNode(cameraTransform)
+igtl_connector.SetName('DVRK_IGTL_CONNECTOR')
+igtl_connector.SetTypeClient('localhost', 11344)
+igtl_connector.Start()
+igtl_connector.RegisterOutgoingMRMLNode(camera_transform)
