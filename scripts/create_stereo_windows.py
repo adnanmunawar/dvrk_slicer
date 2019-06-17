@@ -1,40 +1,52 @@
-viewWidgets = []
-views = []
-cameras = []
-layoutManager = slicer.app.layoutManager()
-for threeDViewIndex in range(layoutManager.threeDViewCount) :
-  viewWidget = layoutManager.threeDWidget(threeDViewIndex)
-  view = viewWidget.threeDView()
-  threeDViewNode = view.mrmlViewNode()
-  cameraNode = slicer.modules.cameras.logic().GetViewActiveCameraNode(threeDViewNode)
-  cameraNode.SetName('Camera' + str(threeDViewIndex))
-  viewWidgets.append(viewWidget)
-  views.append(threeDViewNode)
-  cameras.append(cameraNode)
+layoutNameRight = "RightView"
+layoutLabel = "T3"
 
-vwr = viewWidgets[0]
-vwl = viewWidgets[2]
+# Create MRML node
+viewNodeRight = slicer.vtkMRMLViewNode()
+viewNodeRight.SetName(layoutNameRight)
+viewNodeRight.SetLayoutName(layoutNameRight)
+viewNodeRight.SetLayoutLabel(layoutLabel)
+viewNodeRight = slicer.mrmlScene.AddNode(viewNodeRight)
+viewNodeRight.SetName('RightView')
 
-vwr.setParent(None)
-vwl.setParent(None)
+# Create widget
+viewWidgetRight = slicer.qMRMLThreeDWidget()
 
-vwr.show()
-vwl.show()
+viewWidgetRight.setMRMLScene(slicer.mrmlScene)
+viewWidgetRight.setMRMLViewNode(viewNodeRight)
+viewWidgetRight.show()
 
-camera_right = cameras[0]
-camera_left = cameras[2]
+layoutNameLeft = "LeftView"
+
+# Create MRML node
+viewNodeLeft = slicer.vtkMRMLViewNode()
+viewNodeLeft.SetName(layoutNameLeft)
+viewNodeLeft.SetLayoutName(layoutNameLeft)
+viewNodeLeft.SetLayoutLabel(layoutLabel)
+viewNodeLeft = slicer.mrmlScene.AddNode(viewNodeLeft)
+viewNodeLeft.SetName('LeftView')
+
+# Create widget
+viewWidgetLeft = slicer.qMRMLThreeDWidget()
+
+viewWidgetLeft.setMRMLScene(slicer.mrmlScene)
+viewWidgetLeft.setMRMLViewNode(viewNodeLeft)
+viewWidgetLeft.show()
+
+
+camera_right = slicer.modules.cameras.logic().GetViewActiveCameraNode(viewNodeRight)
+camera_right.GetCamera().Azimuth(-5)
+camera_left = slicer.modules.cameras.logic().GetViewActiveCameraNode(viewNodeLeft)
+camera_left.GetCamera().Azimuth(5)
 
 camera_right.SetName('CameraRight')
 camera_left.SetName('CameraLeft')
 
-tr_right = slicer.mrmlScene.CreateNodeByClass('vtkMRMLTransformNode')
-tr_left = slicer.mrmlScene.CreateNodeByClass('vtkMRMLTransformNode')
+cameraTransform = slicer.mrmlScene.CreateNodeByClass('vtkMRMLLinearTransformNode')
 
-tr_right.SetName('StereoRight')
-tr_left.SetName('StereoLeft')
+cameraTransform.SetName('CameraTransform')
 
-slicer.mrmlScene.AddNode(tr_right)
-slicer.mrmlScene.AddNode(tr_left)
+slicer.mrmlScene.AddNode(cameraTransform)
 
-camera_right.SetAndObserveTransformNodeID(tr_right.GetID())
-camera_left.SetAndObserveTransformNodeID(tr_left.GetID())
+camera_right.SetAndObserveTransformNodeID(cameraTransform.GetID())
+camera_left.SetAndObserveTransformNodeID(cameraTransform.GetID())
