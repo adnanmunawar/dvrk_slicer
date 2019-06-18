@@ -50,13 +50,37 @@ from ros_igtl_bridge.msg import igtltransform, igtlstring, igtlpoint
 from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import Joy
 
+
 class DvrkArm:
     def __init__(self, arm_name):
-        self.pose = PoseStamped()
-        pose_sub = rospy.Subscriber('/dvrk/MTMR/cartesian_pose_current', PoseStamped, self.pose_cb)
+        mtml = mtm('MTML')
+        mtmr = mtm('MTMR')
+
+        mtml.home()
+        mtmr.home()
+
+        mtml.set_wrench_body_orientation_absolute(True)
+        mtmr.set_wrench_body_orientation_absolute(True)
+
+        mtml.set_wrench_body_force((0, 0, 0))
+        mtmr.set_wrench_body_force((0, 0, 0))
+
+        self._pose = PoseStamped()
+        self._frame = Frame()
+        self._pose_sub = rospy.Subscriber('/dvrk/' + arm_name + '/position_cartesian_current', PoseStamped, self.pose_cb)
 
     def pose_cb(self, msg):
-        self.pose = msg
+        self._pose = msg
+        self._frame.p = Vector(self._pose.pose.position.x,
+                               self._pose.pose.position.y,
+                               self._pose.pose.position.z)
+        self._frame.M = Rotation.Quaternion(self._pose.pose.orientation.x,
+                                            self._pose.pose.orientation.y,
+                                            self._pose.pose.orientation.z,
+                                            self._pose.pose.orientation.w)
+
+    def get_current_position(self):
+        return self._frame
 
 
 class DvrkFootPedals:
@@ -114,22 +138,13 @@ class DvrkSlicer:
     def __init__(self):
         rospy.init_node('dvrk_slicer')
 
-        self._mtml = mtm('MTML')
-        self._mtmr = mtm('MTMR')
-
-        self._footpedals = DvrkFootPedals()
-
-        self._mtml.home()
-        self._mtmr.home()
-
-        self._mtml.set_wrench_body_orientation_absolute(True)
-        self._mtmr.set_wrench_body_orientation_absolute(True)
-
-        self._mtml.set_wrench_body_force((0, 0, 0))
-        self._mtmr.set_wrench_body_force((0, 0, 0))
+        self._mtml = DvrkArm('MTML')
+        self._mtmr = DvrkArm('MTMR')
 
         self._mtmr_pos_pre = None
         self._mtml_pos_pre = None
+
+        self._footpedals = DvrkFootPedals()
 
         self._cam_transform = Frame()
         self._probe_transfrom = Frame()
@@ -149,7 +164,7 @@ class DvrkSlicer:
         self._igtl_fiducial_pub = rospy.Publisher('/IGTL_POINT_OUT', igtlpoint, queue_size=1)
         self._igtl_status_pub = rospy.Publisher('/IGTL_TEXT_OUT', igtlstring, queue_size=1)
 
-        self._rate = rospy.Rate(100)
+        self._rate = rospy.Rate(120)
 
         self._pub_msg_pairs = dict()
         self._pub_msg_pairs[self._igtl_cam_trans_pub] = self._igtl_cam_trans
@@ -165,22 +180,15 @@ class DvrkSlicer:
         if self._mtml_pos_pre is None:
             self._mtml_pos_pre = cp
         vel = (cp - self._mtml_pos_pre) / dt
-        self._mtml_pos_pre.x(cp[0])
-        self._mtml_pos_pre.y(cp[1])
-        self._mtml_pos_pre.z(cp[2])
+        self._mtml_pos_pre = cp
         return vel
 
     def get_mtmr_vel(self, dt):
         cp = self._mtmr.get_current_position().p
         if self._mtmr_pos_pre is None:
             self._mtmr_pos_pre = cp
-        print cp
-        print self._mtmr_pos_pre
-        print '--'
         vel = (cp - self._mtmr_pos_pre) / dt
-        self._mtmr_pos_pre.x(cp[0])
-        self._mtmr_pos_pre.y(cp[1])
-        self._mtmr_pos_pre.z(cp[2])
+        self._mtmr_pos_pre = cp
         return vel
 
     def to_igtl_transfrom(self, pykdl_trans, igtl_trans):
