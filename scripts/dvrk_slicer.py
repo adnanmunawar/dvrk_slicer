@@ -53,8 +53,28 @@ from sensor_msgs.msg import Joy
 
 class DvrkArm:
     def __init__(self, arm_name):
+        self._arm_name = arm_name
         mtml = mtm('MTML')
         mtmr = mtm('MTMR')
+
+        self._base_offset = Frame()
+        self._tip_offset = Frame()
+        self._adjusted_pose = Frame()
+        self._adjusted_pose_pre = None
+        self._scale = 1000
+
+        if arm_name == 'MTMR':
+            self._base_offset = Frame(Rotation.RPY(3.0397, -1.0422, -1.477115),
+                                      Vector(-0.182, -0.016, -0.262))
+            self._tip_offset = Frame(Rotation.RPY(-1.57079, 0 , -1.57079),
+                                     Vector(0,0,0))
+        elif arm_name == 'MTML':
+            self._base_offset = Frame(Rotation.RPY(3.0397, -1.0422, -1.477115),
+                                      Vector(0.182, -0.016, -0.262))
+            self._tip_offset = Frame(Rotation.RPY(-1.57079, 0 , -1.57079),
+                                     Vector(0, 0, 0))
+        else:
+            assert (arm_name == 'MTML' and arm_name == 'MTMR')
 
         mtml.home()
         mtmr.home()
@@ -79,8 +99,18 @@ class DvrkArm:
                                             self._pose.pose.orientation.z,
                                             self._pose.pose.orientation.w)
 
-    def get_current_position(self):
-        return self._frame
+    def get_adjusted_pose(self):
+        self._adjusted_pose = ((self._base_offset * self._tip_offset).Inverse() * self._frame * self._tip_offset)
+        # if self._arm_name == 'MTMR':
+        #     print self._arm_name, self._adjusted_pose.p * 1000
+        return self._adjusted_pose
+
+    def get_vel(self, dt):
+        if self._adjusted_pose_pre is None:
+            self._adjusted_pose_pre = self._adjusted_pose_pre
+        vel = (self._adjusted_pose.p - self._adjusted_pose_pre.p) / dt * self._scale
+        self._adjusted_pose_pre = self._adjusted_pose_pre
+        return vel
 
 
 class DvrkFootPedals:
@@ -96,8 +126,8 @@ class DvrkFootPedals:
         self.cam_btn_sub = rospy.Subscriber('/dvrk/footpedals/camera/', Joy, self.cam_btn_cb, queue_size=1)
         self.coag_btn_sub = rospy.Subscriber('/dvrk/footpedals/coag/', Joy, self.coag_btn_cb, queue_size=1)
         self.clutch_btn_sub = rospy.Subscriber('/dvrk/footpedals/clutch/', Joy, self.clutch_btn_cb,  queue_size=1)
-        self.cam_plus_btn_sub = rospy.Subscriber('/dvrk/footpedals/camera_plus/', Joy, self.cam_plus_btn_cb,  queue_size=1)
-        self.cam_minus_btn_sub = rospy.Subscriber('/dvrk/footpedals/camera_plus/', Joy, self.cam_minus_btn_cb,  queue_size=1)
+        self.cam_plus_btn_sub = rospy.Subscriber('/dvrk/footpedals/cam_plus/', Joy, self.cam_plus_btn_cb,  queue_size=1)
+        self.cam_minus_btn_sub = rospy.Subscriber('/dvrk/footpedals/cam_minus/', Joy, self.cam_minus_btn_cb,  queue_size=1)
 
     def cam_btn_cb(self, msg):
         self.cam_btn_pressed = msg.buttons[0]
@@ -147,7 +177,7 @@ class DvrkSlicer:
         self._footpedals = DvrkFootPedals()
 
         self._cam_transform = Frame()
-        self._probe_transfrom = Frame()
+        self._probe_transform = Frame()
 
         self._igtl_cam_trans = igtltransform()
         self._igtl_cam_trans.name = 'CameraTransform'
@@ -168,7 +198,7 @@ class DvrkSlicer:
 
         self._pub_msg_pairs = dict()
         self._pub_msg_pairs[self._igtl_cam_trans_pub] = self._igtl_cam_trans
-        # self._pub_msg_pairs[self._igtl_probe_trans_pub] = self._igtl_probe_trans
+        self._pub_msg_pairs[self._igtl_probe_trans_pub] = self._igtl_probe_trans
         self._pub_msg_pairs[self._igtl_fiducial_pub] = self._igtl_fiducial_point
         # self._pub_msg_pairs[self._igtl_status_pub] = self._igtl_text
 
@@ -176,19 +206,21 @@ class DvrkSlicer:
         self._fiducial_placement_active_mode = 0
 
     def get_mtml_vel(self, dt):
-        cp = self._mtml.get_current_position().p
-        if self._mtml_pos_pre is None:
-            self._mtml_pos_pre = cp
-        vel = (cp - self._mtml_pos_pre) / dt
+        pose = self._mtml.get_adjusted_pose()
+        cp = pose.p * 1000
+        vel = (cp - self._mtml_pos_pre) /dt
         self._mtml_pos_pre = cp
+        # print cp
         return vel
 
     def get_mtmr_vel(self, dt):
-        cp = self._mtmr.get_current_position().p
+        pose = self._mtmr.get_adjusted_pose()
+        cp = pose.p * 1000
         if self._mtmr_pos_pre is None:
             self._mtmr_pos_pre = cp
         vel = (cp - self._mtmr_pos_pre) / dt
         self._mtmr_pos_pre = cp
+        # print cp
         return vel
 
     def to_igtl_transfrom(self, pykdl_trans, igtl_trans):
@@ -208,30 +240,37 @@ class DvrkSlicer:
 
     def update_cam_transform(self):
         if self._footpedals.cam_btn_pressed:
-            mtml_rot = self._mtml.get_current_position().M
-            # self._cam_transform.M = self._cam_transform
+            mtml_rot = self._mtml.get_adjusted_pose().M
+            self._cam_transform.M = mtml_rot
             # delta_trans = Frame(mtml_rot, self.get_mtml_vel(0.001))
 
-            self._cam_transform.p = self._cam_transform.p + self.get_mtml_vel(0.001)
+            self._cam_transform.p = self._cam_transform.p + self.get_mtml_vel(10)
             self.to_igtl_transfrom(self._cam_transform, self._igtl_cam_trans)
+        else:
+            self._mtml_pos_pre = self._mtml.get_adjusted_pose().p * 1000
 
     def update_probe_transform(self):
         if not self._footpedals.clutch_btn_pressed:
-            mtmr_rot = self._mtmr.get_current_position().M
-            delta_trans = Frame(mtmr_rot, self.get_mtmr_vel(0.001))
+            mtmr_rot = self._mtmr.get_adjusted_pose().M
+            # delta_trans = Frame(mtmr_rot, self.get_mtmr_vel(10))
 
-            self._probe_transfrom = self._probe_transfrom * delta_trans
-            self.to_igtl_transfrom(self._probe_transfrom, self._igtl_probe_trans)
+            # self._probe_transfrom = self._probe_transfrom * delta_trans
+            self._probe_transform.p = self._probe_transform.p + self.get_mtmr_vel(10)
+            self.to_igtl_transfrom(self._probe_transform, self._igtl_probe_trans)
+        else:
+            self._mtmr_pos_pre = self._mtmr.get_adjusted_pose().p * 1000
 
     def update_fiducial_position(self):
         if self._footpedals.cam_plus_btn_rising_edge():
+            print 'ENTRY POINT MODE'
             self._fiducial_placement_active_mode = 0
         elif self._footpedals.cam_minus_btn_rising_edge():
+            print 'TARGET POINT MODE'
             self._fiducial_placement_active_mode = 1
 
         if self._footpedals.coag_btn_pressed:
             self._igtl_fiducial_point.name = self._fiducial_placement_modes[self._fiducial_placement_active_mode]
-            fiducial_pos = self._probe_transfrom.p
+            fiducial_pos = self._probe_transform.p
             self.to_igtl_point(fiducial_pos, self._igtl_fiducial_point)
 
     def run(self):
