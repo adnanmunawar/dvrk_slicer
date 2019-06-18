@@ -187,6 +187,7 @@ class DvrkSlicer:
         self._igtl_probe_trans.transform.rotation.w = 1.0
         self._igtl_fiducial_point = igtlpoint()
         self._igtl_fiducial_point.name = 'ENTRY'
+        self._fiducial_offset = Frame(Rotation().RPY(0,0,0), Vector(0, 0, -10))
         self._igtl_text = igtlstring()
 
         self._igtl_cam_trans_pub = rospy.Publisher('/IGTL_TRANSFORM_OUT', igtltransform, queue_size=1)
@@ -254,7 +255,7 @@ class DvrkSlicer:
             mtmr_rot = self._mtmr.get_adjusted_pose().M
             # delta_trans = Frame(mtmr_rot, self.get_mtmr_vel(10))
 
-            # self._probe_transfrom = self._probe_transfrom * delta_trans
+            self._probe_transform.M = mtmr_rot
             self._probe_transform.p = self._probe_transform.p + self.get_mtmr_vel(10)
             self.to_igtl_transfrom(self._probe_transform, self._igtl_probe_trans)
         else:
@@ -270,8 +271,8 @@ class DvrkSlicer:
 
         if self._footpedals.coag_btn_pressed:
             self._igtl_fiducial_point.name = self._fiducial_placement_modes[self._fiducial_placement_active_mode]
-            fiducial_pos = self._probe_transform.p
-            self.to_igtl_point(fiducial_pos, self._igtl_fiducial_point)
+            fiducial_pose = (self._probe_transform * self._fiducial_offset)
+            self.to_igtl_point(fiducial_pose.p, self._igtl_fiducial_point)
 
     def run(self):
         while not rospy.is_shutdown():
