@@ -46,9 +46,70 @@ import rospy
 from dvrk import mtm
 from dvrk.mtm import *
 from PyKDL import Frame, Vector, Rotation
+import PyKDL
+import math
 from ros_igtl_bridge.msg import igtltransform, igtlstring, igtlpoint
 from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import Joy
+
+
+# Util Functions
+def get_angle(v1, v2):
+    dot = PyKDL.dot(v1, v2)
+    if 1.0 - abs(dot) < 0.001:
+        return 0
+    elif dot < 1:
+        v2 = -v2
+
+    angle = math.acos(dot / (v1.Norm() * v2.Norm()))
+    return angle
+
+
+# Get rotation matrix to represent rotation between two vectors
+# Brute force implementation
+def get_rot_mat_from_vecs(v1, v2):
+    # Angle between two axis
+    v1.Normalize()
+    v2.Normalize()
+    angle = get_angle(v1, v2)
+    # Axis of rotation between child's joints axis and constraint_axis
+    if abs(angle) <= 0.1:
+        # Doesn't matter which axis we chose, the rot mat is going to be identity
+        # as angle is almost 0
+        axis = PyKDL.Vector(0, 1, 0)
+    elif abs(angle) >= 3.13:
+        # This is a more involved case, find out the orthogonal vector to vecA
+        ny = PyKDL.Vector(0, 1, 0)
+        temp_ang = get_angle(v1, ny)
+        if 0.1 < abs(temp_ang) < 3.13:
+            axis = v1 * ny
+        else:
+            nz = PyKDL.Vector(0, 0, 1)
+            axis = v1 * nz
+    else:
+        axis = v1 * v2
+
+    mat = PyKDL.Rotation()
+    # Rotation matrix representing the above angular offset
+    rot_mat = mat.Rot(axis, angle)
+    return rot_mat
+
+
+def to_igtl_transfrom(pykdl_trans, igtl_trans):
+    igtl_trans.transform.translation.x = pykdl_trans.p[0]
+    igtl_trans.transform.translation.y = pykdl_trans.p[1]
+    igtl_trans.transform.translation.z = pykdl_trans.p[2]
+    quat = pykdl_trans.M.GetQuaternion()
+    igtl_trans.transform.rotation.x = quat[0]
+    igtl_trans.transform.rotation.y = quat[1]
+    igtl_trans.transform.rotation.z = quat[2]
+    igtl_trans.transform.rotation.w = quat[3]
+
+
+def to_igtl_point(pykdl_vec_, igtl_point_):
+    igtl_point_.pointdata.x = pykdl_vec_[0]
+    igtl_point_.pointdata.y = pykdl_vec_[1]
+    igtl_point_.pointdata.z = pykdl_vec_[2]
 
 
 class DvrkArm:
@@ -206,6 +267,11 @@ class DvrkSlicer:
         self._fiducial_placement_modes = ['ENTRY', 'TARGET']
         self._fiducial_placement_active_mode = 0
 
+        self._cam_init_pose_computed = False
+        self._r_init_pos = Vector()
+        self._l_init_pos = Vector()
+        self._init_vec = Vector()
+
     def get_mtml_vel(self, dt):
         pose = self._mtml.get_adjusted_pose()
         cp = pose.p * 1000
@@ -224,20 +290,36 @@ class DvrkSlicer:
         # print cp
         return vel
 
-    def to_igtl_transfrom(self, pykdl_trans, igtl_trans):
-        igtl_trans.transform.translation.x = pykdl_trans.p[0]
-        igtl_trans.transform.translation.y = pykdl_trans.p[1]
-        igtl_trans.transform.translation.z = pykdl_trans.p[2]
-        quat = pykdl_trans.M.GetQuaternion()
-        igtl_trans.transform.rotation.x = quat[0]
-        igtl_trans.transform.rotation.y = quat[1]
-        igtl_trans.transform.rotation.z = quat[2]
-        igtl_trans.transform.rotation.w = quat[3]
+    def compute_cam_transfrom_from_gesture(self):
+        if self._footpedals.cam_btn_pressed:
+            # Take the Norm length
+            init_vec = Vector(self._init_vec[0], self._init_vec[1], self._init_vec[2])
+            init_length = PyKDL.dot(init_vec, init_vec)
+            mtmr_cur_pose = self._mtmr.get_adjusted_pose()
+            mtml_cur_pose = self._mtml.get_adjusted_pose()
 
-    def to_igtl_point(self, pykdl_vec_, igtl_point_):
-        igtl_point_.pointdata.x = pykdl_vec_[0]
-        igtl_point_.pointdata.y = pykdl_vec_[1]
-        igtl_point_.pointdata.z = pykdl_vec_[2]
+            r_cur_pos = mtmr_cur_pose.p
+            l_cur_pos = mtml_cur_pose.p
+
+            cur_vec = l_cur_pos - r_cur_pos
+            cur_length = PyKDL.dot(cur_vec, cur_vec)
+
+            delta_len = cur_length - init_length
+            delta_rot = get_rot_mat_from_vecs(cur_vec, init_vec)
+
+            r = round(180.0/1.57079 * delta_rot.GetRPY()[0], 2)
+            p = round(180.0/1.57079 * delta_rot.GetRPY()[1], 2)
+            y = round(180.0/1.57079 * delta_rot.GetRPY()[2], 2)
+
+            # print 'ZOOM', round(delta_len, 3), 'RPY', r, p, y
+
+        else:
+            mtmr_init_pose = self._mtmr.get_adjusted_pose()
+            mtml_init_pose = self._mtml.get_adjusted_pose()
+
+            self._r_init_pos = mtmr_init_pose.p
+            self._l_init_pos = mtml_init_pose.p
+            self._init_vec = self._l_init_pos - self._r_init_pos
 
     def update_cam_transform(self):
         if self._footpedals.cam_btn_pressed:
@@ -246,7 +328,7 @@ class DvrkSlicer:
             # delta_trans = Frame(mtml_rot, self.get_mtml_vel(0.001))
 
             self._cam_transform.p = self._cam_transform.p + self.get_mtml_vel(10)
-            self.to_igtl_transfrom(self._cam_transform, self._igtl_cam_trans)
+            to_igtl_transfrom(self._cam_transform, self._igtl_cam_trans)
         else:
             self._mtml_pos_pre = self._mtml.get_adjusted_pose().p * 1000
 
@@ -257,7 +339,7 @@ class DvrkSlicer:
 
             self._probe_transform.M = mtmr_rot
             self._probe_transform.p = self._probe_transform.p + self.get_mtmr_vel(10)
-            self.to_igtl_transfrom(self._probe_transform, self._igtl_probe_trans)
+            to_igtl_transfrom(self._probe_transform, self._igtl_probe_trans)
         else:
             self._mtmr_pos_pre = self._mtmr.get_adjusted_pose().p * 1000
 
@@ -272,11 +354,12 @@ class DvrkSlicer:
         if self._footpedals.coag_btn_pressed:
             self._igtl_fiducial_point.name = self._fiducial_placement_modes[self._fiducial_placement_active_mode]
             fiducial_pose = (self._probe_transform * self._fiducial_offset)
-            self.to_igtl_point(fiducial_pose.p, self._igtl_fiducial_point)
+            to_igtl_point(fiducial_pose.p, self._igtl_fiducial_point)
 
     def run(self):
         while not rospy.is_shutdown():
             self.update_cam_transform()
+            self.compute_cam_transfrom_from_gesture()
             self.update_probe_transform()
             self.update_fiducial_position()
             self.execute_pubs()
