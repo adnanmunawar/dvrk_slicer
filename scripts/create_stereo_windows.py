@@ -91,15 +91,18 @@ slicer.mrmlScene.AddNode(camera_transform)
 
 # Get Right camera handle
 camera_right = slicer.modules.cameras.logic().GetViewActiveCameraNode(view_node_right)
-camera_right.GetCamera().Azimuth(-5)
+# camera_right.GetCamera().Azimuth(1.5)
 camera_right.SetName('CameraRight')
 camera_right.SetAndObserveTransformNodeID(camera_transform.GetID()) # Assign Transform for the Camera
-
+camera_right.GetCamera().SetPosition((43, 498, 0))
+camera_right.GetCamera().SetRoll(-90)
 # Get Left camera handle
 camera_left = slicer.modules.cameras.logic().GetViewActiveCameraNode(view_node_left)
-camera_left.GetCamera().Azimuth(5)
+# camera_left.GetCamera().Azimuth(-1.5)
 camera_left.SetName('CameraLeft')
 camera_left.SetAndObserveTransformNodeID(camera_transform.GetID()) # Assign Transform for the Camera
+camera_left.GetCamera().SetPosition((-43, 498, 0))
+camera_left.GetCamera().SetRoll(90)
 
 print 'Creating OpenIGTLinkIF connector'
 
