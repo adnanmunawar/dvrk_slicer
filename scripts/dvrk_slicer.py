@@ -248,7 +248,7 @@ class DvrkSlicer:
         self._igtl_probe_trans.transform.rotation.w = 1.0
         self._igtl_fiducial_point = igtlpoint()
         self._igtl_fiducial_point.name = 'ENTRY'
-        self._fiducial_offset = Frame(Rotation().RPY(0,0,0), Vector(0, 0, -10))
+        self._fiducial_offset = Frame(Rotation().RPY(0, 0, 0), Vector(0, 0, 0))
         self._igtl_text = igtlstring()
 
         self._igtl_cam_trans_pub = rospy.Publisher('/IGTL_TRANSFORM_OUT', igtltransform, queue_size=1)
@@ -327,7 +327,7 @@ class DvrkSlicer:
             self._cam_transform.M = mtml_rot
             # delta_trans = Frame(mtml_rot, self.get_mtml_vel(0.001))
 
-            self._cam_transform.p = self._cam_transform.p + self.get_mtml_vel(10)
+            self._cam_transform.p = self._cam_transform.p + self.get_mtml_vel(1)
             to_igtl_transfrom(self._cam_transform, self._igtl_cam_trans)
         else:
             self._mtml_pos_pre = self._mtml.get_adjusted_pose().p * 1000
@@ -338,7 +338,7 @@ class DvrkSlicer:
             # delta_trans = Frame(mtmr_rot, self.get_mtmr_vel(10))
 
             self._probe_transform.M = mtmr_rot
-            self._probe_transform.p = self._probe_transform.p + self.get_mtmr_vel(10)
+            self._probe_transform.p = self._probe_transform.p + self.get_mtmr_vel(1)
             to_igtl_transfrom(self._probe_transform, self._igtl_probe_trans)
         else:
             self._mtmr_pos_pre = self._mtmr.get_adjusted_pose().p * 1000
