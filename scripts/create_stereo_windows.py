@@ -44,6 +44,10 @@
 # //==============================================================================
 import slicer
 
+
+# Load the scene first
+slicer.util.loadScene('/home/adnan/NewWorkingHamlynDemo/AnatomicalMRIRegisteredToDTI.mrml')
+
 # Create a Widget for Right Window
 #
 #
